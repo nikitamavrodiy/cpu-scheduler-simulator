@@ -1,4 +1,5 @@
 /* This is code developed by Nikita Mavrodiy */
+
 #include "cmpe351.h"
 #include <stdlib.h>
 #include <stdio.h>
@@ -11,7 +12,13 @@ struct process {
     struct process *next;
 };
 
-struct process *
+struct queue {
+    int queue_id;
+    struct process *processes;
+    struct queue *next;
+};
+
+struct process * 
 read_input(FILE *in)
 {
     struct process *head = NULL;
@@ -45,6 +52,53 @@ read_input(FILE *in)
     return head;
 }
 
+struct queue *
+get_queue(struct queue **head, int queue_id)
+{
+    struct queue *q = *head;
+
+    while (q) {
+        if (q->queue_id == queue_id)
+            return q;
+        q = q->next;
+    }
+
+    /* Not found: create new queue */
+    q = malloc(sizeof(struct queue));
+    if (!q) {
+        perror("malloc");
+        return NULL;
+    }
+
+    q->queue_id = queue_id;
+    q->processes = NULL;
+    q->next = *head;
+    *head = q;
+
+    return q;
+}
+
+struct queue *
+group_by_queue(struct process *plist)
+{
+    struct queue *queues = NULL;
+
+    while (plist) {
+        struct queue *q = get_queue(&queues, plist->queue_id);
+        if (!q)
+            return queues;
+
+        plist->next = q->processes;
+        q->processes = plist;
+
+        plist = plist->next;
+    }
+
+    return queues;
+}
+
+
+
 int
 main(int argc, char *argv[])
 {
@@ -69,11 +123,19 @@ main(int argc, char *argv[])
     struct process *plist = read_input(in);
 
     /* Temporary debug output */
-    struct process *p = plist;
-    while (p) {
-        fprintf(out, "%d:%d:%d:%d\n",
-                p->burst, p->priority, p->arrival, p->queue_id);
-        p = p->next;
+    struct queue *qlist = group_by_queue(plist);
+
+    /* Temporary debug output */
+    struct queue *q = qlist;
+    while (q) {
+        fprintf(out, "Queue %d:\n", q->queue_id);
+        struct process *p = q->processes;
+        while (p) {
+            fprintf(out, "  %d:%d:%d:%d\n",
+                    p->burst, p->priority, p->arrival, p->queue_id);
+            p = p->next;
+        }
+        q = q->next;
     }
 
     fclose(in);
