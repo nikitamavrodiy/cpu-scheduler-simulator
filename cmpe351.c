@@ -84,6 +84,8 @@ group_by_queue(struct process *plist)
     struct queue *queues = NULL;
 
     while (plist) {
+        struct process *next = plist->next;  /* save next */
+
         struct queue *q = get_queue(&queues, plist->queue_id);
         if (!q)
             return queues;
@@ -91,7 +93,7 @@ group_by_queue(struct process *plist)
         plist->next = q->processes;
         q->processes = plist;
 
-        plist = plist->next;
+        plist = next;  /* move to original next */
     }
 
     return queues;
