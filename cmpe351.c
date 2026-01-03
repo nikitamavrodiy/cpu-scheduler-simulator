@@ -99,7 +99,47 @@ group_by_queue(struct process *plist)
     return queues;
 }
 
+void
+fcfs_schedule(struct queue *q, FILE *out)
+{
+    double total_wait = 0.0;
+    int time = 0;
+    int count = 0;
 
+    /* First, find earliest arrival */
+    struct process *p = q->processes;
+    int earliest = -1;
+    while (p) {
+        if (earliest == -1 || p->arrival < earliest)
+            earliest = p->arrival;
+        p = p->next;
+    }
+
+    time = earliest;
+
+    // print queue id and algorithm number 
+    fprintf(out, "%d:1", q->queue_id);
+
+    p = q->processes;
+    while (p) {
+        int wait = time - p->arrival;
+        if (wait < 0)
+            wait = 0;
+
+        fprintf(out, ":%d", wait);
+
+        total_wait += wait;
+        time += p->burst;
+        count++;
+
+        p = p->next;
+    }
+
+    if (count > 0)
+        fprintf(out, ":%.2f\n", total_wait / count);
+    else
+        fprintf(out, ":0.00\n");
+}
 
 int
 main(int argc, char *argv[])
@@ -127,17 +167,10 @@ main(int argc, char *argv[])
     /* Temporary debug output */
     struct queue *qlist = group_by_queue(plist);
 
-    /* Temporary debug output */
     struct queue *q = qlist;
     while (q) {
-        fprintf(out, "Queue %d:\n", q->queue_id);
-        struct process *p = q->processes;
-        while (p) {
-            fprintf(out, "  %d:%d:%d:%d\n",
-                    p->burst, p->priority, p->arrival, p->queue_id);
-            p = p->next;
-        }
-        q = q->next;
+        fcfs_schedule(q, out);
+        q = q->next;    
     }
 
     fclose(in);
