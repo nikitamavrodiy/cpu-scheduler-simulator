@@ -387,5 +387,16 @@ main(int argc, char *argv[])
 
     fclose(in);
     fclose(out);
+
+    /* Print output file to screen */
+    out = fopen(output_file, "r");
+    if (out) {
+        char line[512];
+        while (fgets(line, sizeof(line), out) != NULL) {
+            fputs(line, stderr);
+        }
+        fclose(out);
+    }
+
     return 0;
 }
