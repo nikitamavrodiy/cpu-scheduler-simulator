@@ -14,7 +14,7 @@ struct process {
 
 struct queue {
     int queue_id;
-    struct process *processes;
+    struct process *head;
     struct process *tail;
     struct queue *next;
 };
@@ -53,9 +53,9 @@ read_input(FILE *in)
 }
 
 struct queue *
-get_queue(struct queue **head, int queue_id)
+find_or_create_queue(struct queue **queues, int queue_id)
 {
-    struct queue *q = *head;
+    struct queue *q = *queues;
     struct queue *last = NULL;
 
     while (q) {
@@ -72,12 +72,12 @@ get_queue(struct queue **head, int queue_id)
     }
 
     q->queue_id = queue_id;
-    q->processes = NULL;
+    q->head = NULL;
     q->tail = NULL;
     q->next = NULL;
 
-    if (!*head)
-        *head = q;
+    if (!*queues)
+        *queues = q;
     else
         last->next = q;
 
@@ -85,7 +85,7 @@ get_queue(struct queue **head, int queue_id)
 }
 
 struct queue *
-group_by_queue(struct process *plist)
+group_processes_by_queue(struct process *plist)
 {
     struct queue *queues = NULL;
 
@@ -93,12 +93,12 @@ group_by_queue(struct process *plist)
         struct process *next = plist->next;
         plist->next = NULL;
 
-        struct queue *q = get_queue(&queues, plist->queue_id);
+        struct queue *q = find_or_create_queue(&queues, plist->queue_id);
         if (!q)
             return queues;
 
-        if (!q->processes) {
-            q->processes = plist;
+        if (!q->head) {
+            q->head = plist;
             q->tail = plist;
         } else {
             q->tail->next = plist;
@@ -112,7 +112,7 @@ group_by_queue(struct process *plist)
 }
 
 void
-fcfs_schedule(struct queue *q, FILE *out)
+schedule_fcfs(struct queue *q, FILE *out)
 {
     int time = 0;
     int count = 0;
@@ -120,12 +120,12 @@ fcfs_schedule(struct queue *q, FILE *out)
 
     fprintf(out, "%d:1", q->queue_id);
 
-    struct process *p = q->processes;
+    struct process *p = q->head;
     while (p) {
-        int wait = time - p->arrival;
-        if (wait < 0)
-            wait = 0;
+        if (time < p->arrival)
+            time = p->arrival;
 
+        int wait = time - p->arrival;
         fprintf(out, ":%d", wait);
 
         total_wait += wait;
@@ -135,7 +135,20 @@ fcfs_schedule(struct queue *q, FILE *out)
         p = p->next;
     }
 
-    fprintf(out, ":%.2f\n", total_wait / count);
+    if (count > 0)
+        fprintf(out, ":%.2f\n", total_wait / count);
+    else
+        fprintf(out, ":0.00\n");
+}
+
+void
+run_schedulers(struct queue *queues, FILE *out)
+{
+    struct queue *q = queues;
+    while (q) {
+        schedule_fcfs(q, out);
+        q = q->next;
+    }
 }
 
 int
@@ -160,13 +173,9 @@ main(int argc, char *argv[])
     }
 
     struct process *plist = read_input(in);
-    struct queue *qlist = group_by_queue(plist);
+    struct queue *queues = group_processes_by_queue(plist);
 
-    struct queue *q = qlist;
-    while (q) {
-        fcfs_schedule(q, out);
-        q = q->next;
-    }
+    run_schedulers(queues, out);
 
     fclose(in);
     fclose(out);
