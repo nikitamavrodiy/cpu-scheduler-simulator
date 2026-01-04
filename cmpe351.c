@@ -348,22 +348,36 @@ run_schedulers(struct queue *queues, FILE *out)
 int
 main(int argc, char *argv[])
 {
-    if (argc != 3) {
+    const char *input_file = NULL;
+    const char *output_file = NULL;
+
+    // parse simple flags: -f input -o output (or fallback to argv[1] argv[2])
+    if (argc == 3) {
+        input_file = argv[1];
+        output_file = argv[2];
+    } else {
+        for (int i=1; i<argc; i++) {
+            if (strcmp(argv[i], "-f")==0 && i+1<argc) input_file = argv[++i];
+            else if (strcmp(argv[i], "-o")==0 && i+1<argc) output_file = argv[++i];
+        }
+    }
+
+    if (!input_file || !output_file) {
         fprintf(stderr, "Usage: %s input_file output_file\n", argv[0]);
         return 1;
     }
 
-    FILE *in = fopen(argv[1], "r");
-    if (!in) {
-        perror("Input file");
+    FILE *in = fopen(input_file, "r");
+    if (!in) { 
+        perror("Input file"); 
         return 1;
     }
 
-    FILE *out = fopen(argv[2], "w");
-    if (!out) {
-        perror("Output file");
-        fclose(in);
-        return 1;
+    FILE *out = fopen(output_file, "w");
+    if (!out) { 
+        perror("Output file"); 
+        fclose(in); 
+        return 1; 
     }
 
     struct process *plist = read_input(in);
