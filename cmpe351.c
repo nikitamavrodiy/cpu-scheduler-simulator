@@ -1,14 +1,17 @@
 /* This is code developed by Nikita Mavrodiy */
 
 #include "cmpe351.h"
-#include <stdlib.h>
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 
 struct process {
     int burst;
     int priority;
     int arrival;
     int queue_id;
+    int done;               
+    int wait;               
     struct process *next;
 };
 
@@ -18,6 +21,55 @@ struct queue {
     struct process *tail;
     struct queue *next;
 };
+
+static int
+earliest_arrival(struct queue *q)
+{
+    int min = -1;
+    struct process *p = q->head;
+
+    while (p) {
+        if (min == -1 || p->arrival < min)
+            min = p->arrival;
+        p = p->next;
+    }
+    return (min == -1) ? 0 : min;
+}
+
+static void
+reset_processes(struct queue *q)
+{
+    struct process *p = q->head;
+    while (p) {
+        p->done = 0;
+        p->wait = 0;
+        p = p->next;
+    }
+}
+
+/* Truncate a positive double to two decimal places, return as string without trailing zeros */
+static void
+format_truncated_awt(double val, char *buf, size_t bufsz)
+{
+    if (val < 0.0) val = 0.0;
+    /* truncate to two decimals (toward zero) */
+    int t = (int)(val * 100.0); /* truncation */
+    double truncated = t / 100.0;
+    /* print with two decimals then strip trailing zeros and dot */
+    char tmp[64];
+    snprintf(tmp, sizeof(tmp), "%.2f", truncated);
+    /* strip trailing zeros */
+    int len = (int)strlen(tmp);
+    while (len > 0 && tmp[len-1] == '0') {
+        tmp[--len] = '\0';
+    }
+    if (len > 0 && tmp[len-1] == '.') {
+        tmp[--len] = '\0';
+    }
+    /* copy to buf */
+    strncpy(buf, tmp, bufsz-1);
+    buf[bufsz-1] = '\0';
+}
 
 struct process *
 read_input(FILE *in)
@@ -39,6 +91,8 @@ read_input(FILE *in)
         p->priority = priority;
         p->arrival = arrival;
         p->queue_id = queue_id;
+        p->done = 0;
+        p->wait = 0;
         p->next = NULL;
 
         if (!head)
@@ -111,6 +165,7 @@ group_processes_by_queue(struct process *plist)
     return queues;
 }
 
+/* FCFS: simulate timeline and store waits in process->wait, then print in input order */
 void
 schedule_fcfs(struct queue *q, FILE *out)
 {
@@ -118,15 +173,16 @@ schedule_fcfs(struct queue *q, FILE *out)
     int count = 0;
     double total_wait = 0.0;
 
-    fprintf(out, "%d:1", q->queue_id);
-
+    reset_processes(q);
+    
+    /* compute waits and accumulate */
     struct process *p = q->head;
     while (p) {
         if (time < p->arrival)
             time = p->arrival;
 
         int wait = time - p->arrival;
-        fprintf(out, ":%d", wait);
+        p->wait = wait;
 
         total_wait += wait;
         time += p->burst;
@@ -135,10 +191,146 @@ schedule_fcfs(struct queue *q, FILE *out)
         p = p->next;
     }
 
-    if (count > 0)
-        fprintf(out, ":%.2f\n", total_wait / count);
-    else
-        fprintf(out, ":0.00\n");
+    /* print results in original input order */
+    fprintf(out, "%d:1", q->queue_id);
+    p = q->head;
+    while (p) {
+        fprintf(out, ":%d", p->wait);
+        p = p->next;
+    }
+
+    char buf[32];
+    if (count > 0) {
+        double avg = total_wait / count;
+        format_truncated_awt(avg, buf, sizeof(buf));
+        fprintf(out, ":%s\n", buf);
+    } else {
+        fprintf(out, ":0\n");
+    }
+}
+
+/* SJF non-preemptive: simulate, store waits in process->wait, print in input order */
+void
+schedule_sjf(struct queue *q, FILE *out)
+{
+    int completed = 0, count = 0;
+    double total_wait = 0.0;
+
+    reset_processes(q);
+
+    int time = earliest_arrival(q);
+
+    /* count processes */
+    struct process *p = q->head;
+    while (p) {
+        count++;
+        p = p->next;
+    }
+
+    while (completed < count) {
+        struct process *chosen = NULL;
+        p = q->head;
+        while (p) {
+            if (!p->done && p->arrival <= time) {
+                if (!chosen || p->burst < chosen->burst)
+                    chosen = p;
+            }
+            p = p->next;
+        }
+
+        if (!chosen) {
+            time++;
+            continue;
+        }
+
+        int wait = time - chosen->arrival;
+        if (wait < 0) wait = 0; /* safety, though timeline ensures non-negative */
+        chosen->wait = wait;
+
+        total_wait += wait;
+        time += chosen->burst;
+        chosen->done = 1;
+        completed++;
+    }
+
+    /* print results in original input order */
+    fprintf(out, "%d:2", q->queue_id);
+    p = q->head;
+    while (p) {
+        fprintf(out, ":%d", p->wait);
+        p = p->next;
+    }
+
+    char buf[32];
+    if (count > 0) {
+        double avg = total_wait / count;
+        format_truncated_awt(avg, buf, sizeof(buf));
+        fprintf(out, ":%s\n", buf);
+    } else {
+        fprintf(out, ":0\n");
+    }
+}
+
+/* Priority non-preemptive: simulate, store waits, print in input order */
+void
+schedule_priority(struct queue *q, FILE *out)
+{
+    int completed = 0, count = 0;
+    double total_wait = 0.0;
+
+    reset_processes(q);
+
+    int time = earliest_arrival(q);
+
+    /* count processes */
+    struct process *p = q->head;
+    while (p) {
+        count++;
+        p = p->next;
+    }
+
+    while (completed < count) {
+        struct process *chosen = NULL;
+        p = q->head;
+        while (p) {
+            if (!p->done && p->arrival <= time) {
+                if (!chosen || p->priority < chosen->priority)
+                    chosen = p;
+            }
+            p = p->next;
+        }
+
+        if (!chosen) {
+            time++;
+            continue;
+        }
+
+        int wait = time - chosen->arrival;
+        if (wait < 0) wait = 0;
+        chosen->wait = wait;
+
+        total_wait += wait;
+        time += chosen->burst;
+        chosen->done = 1;
+        completed++;
+    }
+
+    /* print results in original input order */
+    fprintf(out, "%d:3", q->queue_id);
+    p = q->head;
+    while (p) {
+        fprintf(out, ":%d", p->wait);
+        p = p->next;
+    }
+
+    char buf[32];
+    if (count > 0) {
+        double avg = total_wait / count;
+        format_truncated_awt(avg, buf, sizeof(buf));
+        fprintf(out, ":%s\n", buf);
+    } else {
+        fprintf(out, ":0\n");
+    }
 }
 
 void
@@ -147,6 +339,8 @@ run_schedulers(struct queue *queues, FILE *out)
     struct queue *q = queues;
     while (q) {
         schedule_fcfs(q, out);
+        schedule_sjf(q, out);
+        schedule_priority(q, out);
         q = q->next;
     }
 }
